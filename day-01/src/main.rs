@@ -22,6 +22,12 @@ fn main() -> Result<(), String> {
         println!("There is no answer to puzzle 1");
     }
 
+    if let Some(result_2) = solve_part_2(&numbers) {
+        println!("Answer to puzzle 2 is {}", result_2);
+    } else {
+        println!("There is no answer to puzzle 2");
+    }
+
     Ok(())
 }
 
@@ -30,6 +36,19 @@ fn solve_part_1(numbers: &[i32]) -> Option<i32> {
         for j in (i + 1)..numbers.len() {
             if numbers[i] + numbers[j] == 2020 {
                 return Some(numbers[i] * numbers[j]);
+            }
+        }
+    }
+    None
+}
+
+fn solve_part_2(numbers: &[i32]) -> Option<i32> {
+    for i in 0..(numbers.len() - 2) {
+        for j in (i + 1)..(numbers.len() - 1) {
+            for p in (j + 1)..numbers.len() {
+                if numbers[i] + numbers[j] + numbers[p] == 2020 {
+                    return Some(numbers[i] * numbers[j] * numbers[p]);
+                }
             }
         }
     }
