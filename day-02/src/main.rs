@@ -14,8 +14,13 @@ fn main() -> Result<(), String> {
         .collect::<Result<Vec<Password>, String>>()?;
 
     let n_valid_passwords = passwords.iter().filter(|pw| check_pw(pw)).count();
+    let new_n_valid_passwords = passwords.iter().filter(|pw| check_pw_new(pw)).count();
 
     println!("There are {} valid passwords", n_valid_passwords);
+    println!(
+        "There are {} valid passwords for the actual rules",
+        new_n_valid_passwords
+    );
 
     Ok(())
 }
@@ -30,6 +35,27 @@ struct Password<'a> {
 fn check_pw(pw: &Password) -> bool {
     let count = pw.pwd.chars().filter(|c| *c == pw.letter).count();
     count >= pw.min && count <= pw.max
+}
+
+fn check_pw_new(pw: &Password) -> bool {
+    // indices start with 1
+    if pw.min == 0 || pw.max == 0 {
+        return false;
+    }
+    let mut count = 0;
+    let pwd = pw.pwd;
+    let mut chars = pwd.chars().skip(&pw.min - 1);
+    let char1 = chars.next();
+    if char1 == Some(pw.letter) {
+        count += 1;
+    }
+    let mut chars = chars.skip(pw.max - pw.min - 1);
+    let char2 = chars.next();
+    if char2 == Some(pw.letter) {
+        count += 1;
+    }
+
+    count == 1
 }
 
 fn parse_line(line: &str) -> Result<Password, String> {
@@ -97,5 +123,56 @@ mod test {
                 pwd: "abcdef"
             }
         );
+    }
+
+    #[test]
+    fn check_pw_new_should_accept_valid_passwords() {
+        // given
+        let valid = Password {
+            min: 1,
+            max: 3,
+            letter: 'a',
+            pwd: "abcde",
+        };
+
+        // when
+        let result = check_pw_new(&valid);
+
+        // then
+        assert!(result);
+    }
+
+    #[test]
+    fn check_pw_new_should_reject_invalid_passwords_with_no_occurences() {
+        // given
+        let password = Password {
+            min: 1,
+            max: 3,
+            letter: 'b',
+            pwd: "cdefg",
+        };
+
+        // when
+        let result = check_pw_new(&password);
+
+        // then
+        assert!(!result);
+    }
+
+    #[test]
+    fn check_pw_new_should_reject_invalid_passwords_with_two_occurences() {
+        // given
+        let password = Password {
+            min: 2,
+            max: 9,
+            letter: 'c',
+            pwd: "ccccccccc",
+        };
+
+        // when
+        let result = check_pw_new(&password);
+
+        // then
+        assert!(!result);
     }
 }
