@@ -21,7 +21,27 @@ fn main() -> Result<(), String> {
 
     println!("The highest seat ID is {}", max_seat_id);
 
+    let own_seat = find_free_seat(&seat_ids).ok_or_else(|| "There is no free seat!".to_owned())?;
+    println!("Your seat is {}", own_seat);
+
     Ok(())
+}
+
+fn find_free_seat(seat_ids: &[u16]) -> Option<u16> {
+    let max_seat_id = *seat_ids.iter().max()?;
+
+    let mut taken_seats: Vec<bool> = vec![false; max_seat_id as usize + 1];
+
+    for seat in seat_ids {
+        taken_seats[*seat as usize] = true;
+    }
+
+    taken_seats
+        .windows(3)
+        .enumerate()
+        .filter(|(_, w)| w[0] && !w[1] && w[2])
+        .map(|(i, _)| (i + 1) as u16)
+        .next()
 }
 
 fn line_to_number(line: &str, line_index: usize) -> Result<u16, String> {
