@@ -8,11 +8,16 @@ fn main() -> Result<(), String> {
         .ok_or_else(|| "No file name given.".to_owned())?;
     let content = read_to_string(&Path::new(&filename)).map_err(|e| e.to_string())?;
 
-    let groups = parse_groups(&content);
+    let groups = parse_groups_any(&content);
 
-    let yes_answers = count_yes_answers(&groups);
+    let any_yes_answers = count_yes_answers(&groups);
+    println!(
+        "Sum of the any-yes-answers of all groups: {}",
+        any_yes_answers
+    );
 
-    println!("Sum of the yes-answers of all groups: {}", yes_answers);
+    let all_yes_answers = count_yes_answers(&parse_groups_all(&content));
+    println!("Sum of all-yes-answers of all groups: {}", all_yes_answers);
 
     Ok(())
 }
@@ -24,15 +29,15 @@ fn count_yes_answers(groups: &[[bool; 26]]) -> usize {
         .sum()
 }
 
-fn parse_groups(content: &str) -> Vec<[bool; 26]> {
+fn parse_groups_any(content: &str) -> Vec<[bool; 26]> {
     content
         .split("\n\n")
         .filter(|g| !g.is_empty())
-        .map(parse_group)
+        .map(parse_group_any)
         .collect()
 }
 
-fn parse_group(input: &str) -> [bool; 26] {
+fn parse_group_any(input: &str) -> [bool; 26] {
     let mut answers = [false; 26];
     for c in input
         .chars()
@@ -45,12 +50,33 @@ fn parse_group(input: &str) -> [bool; 26] {
     answers
 }
 
+fn parse_groups_all(content: &str) -> Vec<[bool; 26]> {
+    content
+        .split("\n\n")
+        .filter(|g| !g.is_empty())
+        .map(parse_group_all)
+        .collect()
+}
+
+fn parse_group_all(input: &str) -> [bool; 26] {
+    input
+        .split('\n')
+        .filter(|s| !s.is_empty())
+        .map(parse_group_any)
+        .fold([true; 26], |mut all, this| {
+            for i in 0..26 {
+                all[i] = all[i] && this[i]
+            }
+            all
+        })
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
-    fn count_yes_answers_works_correctly() {
+    fn count_any_yes_answers_works_correctly() {
         // given
         let input = r"abc
 
@@ -67,12 +93,39 @@ a
 a
 
 b";
-        let groups = parse_groups(input);
 
         // when
+        let groups = parse_groups_any(input);
         let count = count_yes_answers(&groups);
 
         // then
         assert_eq!(count, 11);
+    }
+
+    #[test]
+    fn count_all_yes_answers_works_correctly() {
+        // given
+        let input = r"abc
+
+a
+b
+c
+
+ab
+ac
+
+a
+a
+a
+a
+
+b";
+
+        // when
+        let groups = parse_groups_all(input);
+        let count = count_yes_answers(&groups);
+
+        // then
+        assert_eq!(count, 6);
     }
 }
