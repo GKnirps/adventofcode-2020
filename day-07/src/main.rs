@@ -40,11 +40,13 @@ fn count_descendants(graph: &HashMap<&str, Vec<&str>>, start: &str) -> usize {
     seen.len() - 1
 }
 
-fn inverse_graph<'a>(graph: &'a HashMap<&'a str, Vec<&'a str>>) -> HashMap<&'a str, Vec<&'a str>> {
+fn inverse_graph<'a>(
+    graph: &'a HashMap<&'a str, Vec<(&'a str, u64)>>,
+) -> HashMap<&'a str, Vec<&'a str>> {
     let mut inverted: HashMap<&'a str, Vec<&'a str>> = HashMap::with_capacity(graph.len());
 
     for (lhs, rhs) in graph.iter() {
-        for key in rhs {
+        for (key, _) in rhs {
             inverted
                 .entry(key)
                 .or_insert_with(|| Vec::with_capacity(graph.len()))
@@ -55,7 +57,7 @@ fn inverse_graph<'a>(graph: &'a HashMap<&'a str, Vec<&'a str>>) -> HashMap<&'a s
     inverted
 }
 
-fn parse_lines(content: &str) -> Result<HashMap<&str, Vec<&str>>, String> {
+fn parse_lines(content: &str) -> Result<HashMap<&str, Vec<(&str, u64)>>, String> {
     content
         .split('\n')
         .filter(|s| !s.is_empty())
@@ -63,7 +65,7 @@ fn parse_lines(content: &str) -> Result<HashMap<&str, Vec<&str>>, String> {
         .collect()
 }
 
-fn parse_line(line: &str) -> Result<(&str, Vec<&str>), String> {
+fn parse_line(line: &str) -> Result<(&str, Vec<(&str, u64)>), String> {
     let mut split1 = line.splitn(2, " bags contain ");
     let lhs = split1
         .next()
@@ -79,19 +81,39 @@ fn parse_line(line: &str) -> Result<(&str, Vec<&str>), String> {
         return Ok((lhs, vec![]));
     }
 
-    let rhs: Vec<&str> = rhs_raw
+    let rhs: Result<Vec<(&str, u64)>, String> = rhs_raw
         .split(", ")
-        .map(|s| {
-            s.trim()
-                .trim_end_matches('.')
-                .trim_end_matches("bags")
-                .trim_end_matches("bag")
-        })
-        // we don't care about the amount (yet). maybe it is required for part 2
-        .map(|s| s.trim_start_matches(|c: char| c.is_ascii_digit()).trim())
+        .map(|s| parse_num_and_color(s, line))
         .collect();
 
-    Ok((lhs, rhs))
+    Ok((lhs, rhs?))
+}
+
+fn parse_num_and_color<'a>(s: &'a str, full_line: &str) -> Result<(&'a str, u64), String> {
+    let mut num_color_split = s
+        .trim()
+        .trim_end_matches('.')
+        .trim_end_matches("bags")
+        .trim_end_matches("bag")
+        .splitn(2, ' ');
+    let num = num_color_split
+        .next()
+        .ok_or_else(|| {
+            format!(
+                "Line '{}' does not have an amount of bags for all contained bags",
+                full_line
+            )
+        })
+        .and_then(|s| {
+            s.parse::<u64>()
+                .map_err(|e| format!("Invalid amount of bags in line '{}': {}", full_line, e))
+        })?;
+    let color = num_color_split
+        .next()
+        .ok_or_else(|| format!("Missing color in line '{}'", full_line))?
+        .trim()
+        .trim_end_matches('.');
+    Ok((color, num))
 }
 
 #[cfg(test)]
@@ -111,7 +133,12 @@ mod test {
         assert_eq!(lhs, "light orange");
         assert_eq!(
             &rhs,
-            &["dark maroon", "dim maroon", "striped green", "pale aqua"]
+            &[
+                ("dark maroon", 1),
+                ("dim maroon", 3),
+                ("striped green", 5),
+                ("pale aqua", 2)
+            ]
         );
     }
 }
