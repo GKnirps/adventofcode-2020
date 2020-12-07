@@ -18,6 +18,9 @@ fn main() -> Result<(), String> {
         descendants
     );
 
+    let bags_in_shiny_gold_bag = count_bags_in_shiny_gold_bag(&graph);
+    println!("There is a total of {} bags in a shiny gold bag.", bags_in_shiny_gold_bag);
+
     Ok(())
 }
 
@@ -38,6 +41,31 @@ fn count_descendants(graph: &HashMap<&str, Vec<&str>>, start: &str) -> usize {
     }
 
     seen.len() - 1
+}
+
+// the way I programmed it, it *may* turn into an infinite loop if the graph isn't a DAG
+fn count_bags_in_shiny_gold_bag(graph: &HashMap<&str, Vec<(&str, u64)>>) -> u64 {
+    let mut lookup = HashMap::with_capacity(graph.len());
+    count_contained_bags(graph, "shiny gold", &mut lookup)
+}
+
+fn count_contained_bags<'a>(
+    graph: &HashMap<&'a str, Vec<(&'a str, u64)>>,
+    color: &'a str,
+    lookup: &mut HashMap<&'a str, u64>,
+) -> u64 {
+    if let Some(n) = lookup.get(color) {
+        return *n;
+    }
+    let number_of_children: u64 = match graph.get(color) {
+        None => 0,
+        Some(children) => children
+            .iter()
+            .map(|(child_color, n)| n + n * count_contained_bags(graph, child_color, lookup))
+            .sum(),
+    };
+    lookup.insert(color, number_of_children);
+    number_of_children
 }
 
 fn inverse_graph<'a>(
@@ -140,5 +168,27 @@ mod test {
                 ("pale aqua", 2)
             ]
         );
+    }
+
+    #[test]
+    fn count_bags_in_shiny_gold_bag_counts_correctly() {
+        // given
+        let rules = r"light red bags contain 1 bright white bag, 2 muted yellow bags.
+dark orange bags contain 3 bright white bags, 4 muted yellow bags.
+bright white bags contain 1 shiny gold bag.
+muted yellow bags contain 2 shiny gold bags, 9 faded blue bags.
+shiny gold bags contain 1 dark olive bag, 2 vibrant plum bags.
+dark olive bags contain 3 faded blue bags, 4 dotted black bags.
+vibrant plum bags contain 5 faded blue bags, 6 dotted black bags.
+faded blue bags contain no other bags.
+dotted black bags contain no other bags.";
+
+        let graph = parse_lines(rules).expect("Expected valid graph");
+
+        // when
+        let count = count_bags_in_shiny_gold_bag(&graph);
+
+        // then
+        assert_eq!(count, 32);
     }
 }
