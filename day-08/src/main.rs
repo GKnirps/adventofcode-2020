@@ -10,13 +10,39 @@ fn main() -> Result<(), String> {
 
     let program = parse_ops(&content)?;
 
-    let accumulator_after_loop = detect_loop(&program)?;
-    println!("Detected loop, accumulator is {}", accumulator_after_loop);
+    let (is_loop, accumulator_after_loop) = detect_loop(&program)?;
+    if is_loop {
+        println!("Detected loop, accumulator is {}", accumulator_after_loop);
+    } else {
+        println!("Unable to detect loop, program terminated correctly");
+    }
+
+    let repaired_result = repair_program(&program)?;
+    println!(
+        "The accumulator after running the repaired program is {}",
+        repaired_result
+    );
 
     Ok(())
 }
 
-fn detect_loop(program: &[Op]) -> Result<i32, String> {
+fn repair_program(program: &[Op]) -> Result<i32, String> {
+    for i in 0..program.len() {
+        let replaced_instruction = match program[i] {
+            Op::Jmp(arg) => Op::Nop(arg),
+            Op::Nop(arg) => Op::Jmp(arg),
+            Op::Acc(_) => continue,
+        };
+        let mut mod_program = program.to_vec();
+        mod_program[i] = replaced_instruction;
+        if let Ok((false, acc)) = detect_loop(&mod_program) {
+            return Ok(acc);
+        }
+    }
+    Err("Unable to repair program".to_owned())
+}
+
+fn detect_loop(program: &[Op]) -> Result<(bool, i32), String> {
     if program.is_empty() {
         return Err("Program is empty".to_owned());
     }
@@ -26,7 +52,10 @@ fn detect_loop(program: &[Op]) -> Result<i32, String> {
     while !visited[state.ip as usize] {
         visited[state.ip as usize] = true;
         state = run_instruction(program, &state)?;
-        if state.ip < 0 || state.ip >= program.len() as i32 {
+        if state.ip == program.len() as i32 {
+            return Ok((false, state.accumulator));
+        }
+        if state.ip < 0 || state.ip > program.len() as i32 {
             return Err(format!(
                 "Instruction pointer out of bounds in loop detection: {}",
                 state.ip
@@ -34,7 +63,7 @@ fn detect_loop(program: &[Op]) -> Result<i32, String> {
         }
     }
 
-    Ok(state.accumulator)
+    Ok((true, state.accumulator))
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord, Debug, Hash, Default)]
@@ -120,7 +149,30 @@ acc +6
 
         // then
         let acc = result.expect("Expected loop detection to be successful");
-        assert_eq!(acc, 5);
+        assert_eq!(acc, (true, 5));
+    }
+
+    #[test]
+    fn repair_program_works_on_example() {
+        // given
+        let input = r"nop +0
+acc +1
+jmp +4
+acc +3
+jmp -3
+acc -99
+acc +1
+jmp -4
+acc +6
+";
+        let program = parse_ops(input).expect("Expected program to parse");
+
+        // when
+        let result = repair_program(&program);
+
+        // then
+        let acc = result.expect("Expected successful repair");
+        assert_eq!(acc, 8);
     }
 
     #[test]
