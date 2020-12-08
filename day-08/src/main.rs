@@ -58,7 +58,7 @@ fn run_instruction(program: &[Op], state: &State) -> Result<State, String> {
                 ip: ip + arg,
                 accumulator,
             },
-            Op::Nop => State {
+            Op::Nop(_) => State {
                 ip: ip + 1,
                 accumulator,
             },
@@ -70,7 +70,7 @@ fn run_instruction(program: &[Op], state: &State) -> Result<State, String> {
 enum Op {
     Acc(i32),
     Jmp(i32),
-    Nop,
+    Nop(i32),
 }
 
 fn parse_ops(code: &str) -> Result<Vec<Op>, String> {
@@ -91,7 +91,7 @@ fn parse_op(line: &str) -> Result<Op, String> {
     match opcode_s {
         "acc" => Ok(Op::Acc(argument)),
         "jmp" => Ok(Op::Jmp(argument)),
-        "nop" => Ok(Op::Nop),
+        "nop" => Ok(Op::Nop(argument)),
         _ => Err(format!("Unknown opcode: '{}'", opcode_s)),
     }
 }
@@ -133,7 +133,7 @@ acc +6
 
         // then
         let ops = result.expect("Expected valid parsing");
-        assert_eq!(&ops, &[Op::Acc(4), Op::Nop, Op::Jmp(-2)]);
+        assert_eq!(&ops, &[Op::Acc(4), Op::Nop(-3000), Op::Jmp(-2)]);
     }
 
     #[test]
@@ -181,7 +181,7 @@ acc +6
     #[test]
     fn run_instruction_runs_acc_correctly() {
         // given
-        let program = &[Op::Nop, Op::Acc(42)];
+        let program = &[Op::Nop(11), Op::Acc(42)];
         let state = State {
             ip: 1,
             accumulator: 11,
@@ -204,7 +204,7 @@ acc +6
     #[test]
     fn run_instruction_runs_jmp_correctly() {
         // given
-        let program = &[Op::Nop, Op::Jmp(42)];
+        let program = &[Op::Nop(11), Op::Jmp(42)];
         let state = State {
             ip: 1,
             accumulator: 11,
@@ -227,7 +227,7 @@ acc +6
     #[test]
     fn run_instruction_runs_nop_correctly() {
         // given
-        let program = &[Op::Nop, Op::Nop];
+        let program = &[Op::Nop(11), Op::Nop(42)];
         let state = State {
             ip: 1,
             accumulator: 11,
@@ -250,7 +250,7 @@ acc +6
     #[test]
     fn run_instruction_fails_for_invalid_ip() {
         // given
-        let program = &[Op::Nop];
+        let program = &[Op::Nop(42)];
         let state = State {
             ip: -1,
             accumulator: 0,
