@@ -54,11 +54,18 @@ fn cum_sum(data: &[u64]) -> Vec<u64> {
 }
 
 fn find_weakness(data: &[u64], invalid_number: u64) -> Option<u64> {
+    if data.len() < 3 {
+        return None;
+    }
     let data_sum = cum_sum(data);
     // You know what, let's brute force the rest again
-    // Oh, and words cannot describe how relieved I am that I did not get an off-by-one-error.
     for window_len in 2..data_sum.len() {
-        for lower in 0..(data_sum.len() - window_len) {
+        if data_sum[window_len-1] == invalid_number {
+            let min = data[0..(window_len)].iter().min()?;
+            let max = data[0..(window_len)].iter().max()?;
+            return Some(min + max);
+        }
+        for lower in 1..(data_sum.len() - window_len) {
             let upper = lower + window_len;
             if data_sum[upper] - data_sum[lower] == invalid_number {
                 let min = data[lower..(upper + 1)].iter().min()?;
@@ -126,5 +133,18 @@ mod test {
 
         // then
         assert_eq!(result, Some(62))
+    }
+
+    #[test]
+    fn find_weakness_works_for_end_to_end_example() {
+        // given
+        let data = [1,2,3];
+        let invalid_number = 3;
+
+        // when
+        let result = find_weakness(&data, invalid_number);
+
+        // then
+        assert_eq!(result, Some(3));
     }
 }
