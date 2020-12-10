@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -15,7 +16,31 @@ fn main() -> Result<(), String> {
         println!("no valid adapter chain");
     }
 
+    let possible_adapter_combs = count_adapter_combinations(&adapters);
+    println!(
+        "There are {} possible ways to connect your device.",
+        possible_adapter_combs
+    );
+
     Ok(())
+}
+
+fn count_adapter_combinations(sorted_adapters: &[u64]) -> u64 {
+    if sorted_adapters.is_empty() {
+        return 0;
+    }
+    let mut combinations = Vec::with_capacity(sorted_adapters.len());
+    combinations.push(1);
+    for i in 1..sorted_adapters.len() {
+        let mut count = 0;
+        for j in (i - min(i, 3))..i {
+            if sorted_adapters[i] - sorted_adapters[j] < 4 {
+                count += combinations[j];
+            }
+        }
+        combinations.push(count);
+    }
+    combinations[combinations.len() - 1]
 }
 
 fn solve_adapter_chain(sorted_adapters: &[u64]) -> Option<usize> {
@@ -78,5 +103,31 @@ mod test {
 
         // then
         assert_eq!(result, Some(220));
+    }
+
+    #[test]
+    fn count_adapter_combinations_works_for_example_1() {
+        // given
+        let adapters =
+            parse_input("16\n10\n15\n5\n1\n11\n7\n19\n6\n12\n4\n").expect("Expected valid input");
+
+        // when
+        let result = count_adapter_combinations(&adapters);
+
+        // then
+        assert_eq!(result, 8);
+    }
+
+    #[test]
+    fn count_adapter_combinations_works_for_example_2() {
+        // given
+        let adapters = parse_input(
+            "28\n33\n18\n42\n31\n14\n46\n20\n48\n47\n24\n23\n49\n45\n19\n38\n39\n11\n1\n32\n25\n35\n8\n17\n7\n9\n4\n2\n34\n10\n3\n").expect("Expected valid input");
+
+        // when
+        let result = count_adapter_combinations(&adapters);
+
+        // then
+        assert_eq!(result, 19208);
     }
 }
