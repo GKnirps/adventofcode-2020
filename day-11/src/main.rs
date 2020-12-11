@@ -10,8 +10,14 @@ fn main() -> Result<(), String> {
 
     let ferry = parse_input(&content)?;
 
-    let occupied_seats = seats_at_equilibrium(ferry);
+    let occupied_seats = seats_at_equilibrium(ferry.clone());
     println!("In a stable state, {} seats are occupied", occupied_seats);
+
+    let occupied_seats_line_of_sight = seats_at_equilibrium_line_of_sight(ferry);
+    println!(
+        "In a stable state, {} seats are occupied if the passengers use line of sight",
+        occupied_seats_line_of_sight
+    );
 
     Ok(())
 }
@@ -20,6 +26,17 @@ fn main() -> Result<(), String> {
 fn seats_at_equilibrium(mut ferry: Ferry) -> usize {
     loop {
         let next = next_gen(&ferry);
+        if ferry == next {
+            return next.cells.iter().filter(|c| **c == Cell::Occupied).count();
+        }
+        ferry = next;
+    }
+}
+
+// I don't know if this terminates either
+fn seats_at_equilibrium_line_of_sight(mut ferry: Ferry) -> usize {
+    loop {
+        let next = next_gen_line_of_sight(&ferry);
         if ferry == next {
             return next.cells.iter().filter(|c| **c == Cell::Occupied).count();
         }
@@ -56,6 +73,80 @@ fn next_gen(ferry: &Ferry) -> Ferry {
         width: ferry.width,
         height: ferry.height,
     }
+}
+
+fn next_gen_line_of_sight(ferry: &Ferry) -> Ferry {
+    let cells: Vec<Cell> = ferry
+        .cells
+        .iter()
+        .enumerate()
+        .map(|(i, cell)| match cell {
+            Cell::Floor => Cell::Floor,
+            Cell::Occupied => {
+                if count_occupied_seats_in_sight(ferry, i) > 4 {
+                    Cell::Seat
+                } else {
+                    Cell::Occupied
+                }
+            }
+            Cell::Seat => {
+                if count_occupied_seats_in_sight(ferry, i) == 0 {
+                    Cell::Occupied
+                } else {
+                    Cell::Seat
+                }
+            }
+        })
+        .collect();
+
+    Ferry {
+        cells,
+        width: ferry.width,
+        height: ferry.height,
+    }
+}
+
+fn count_occupied_seats_in_sight(ferry: &Ferry, cell_index: usize) -> usize {
+    [
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+    ]
+    .iter()
+    .filter(|(rowdir, coldir)| is_occupied_seat_in_direction(ferry, cell_index, *rowdir, *coldir))
+    .count()
+}
+
+fn is_occupied_seat_in_direction(
+    ferry: &Ferry,
+    cell_index: usize,
+    rowdir: isize,
+    coldir: isize,
+) -> bool {
+    if rowdir == 0 && coldir == 0 {
+        // prevent infinite loop
+        return false;
+    }
+    let mut row = (cell_index / ferry.width) as isize + rowdir;
+    let mut col = (cell_index % ferry.width) as isize + coldir;
+
+    while row >= 0 && col >= 0 && row < ferry.height as isize && col < ferry.width as isize {
+        let seat_in_sight = ferry.cells[row as usize * ferry.width + col as usize];
+
+        if seat_in_sight == Cell::Occupied {
+            return true;
+        } else if seat_in_sight == Cell::Seat {
+            return false;
+        }
+        row += rowdir;
+        col += coldir;
+    }
+    false
 }
 
 fn count_occupied_seats_around(ferry: &Ferry, cell_index: usize) -> u8 {
@@ -199,5 +290,93 @@ L.LLLLL.LL",
 
         // then
         assert_eq!(result, 37);
+    }
+
+    #[test]
+    fn count_occupied_seats_in_sight_works_for_example_1() {
+        // given
+        let ferry = parse_input(
+            r".......#.
+...#.....
+.#.......
+.........
+..#L....#
+....#....
+.........
+#........
+...#.....",
+        )
+        .expect("Expected initial state to be parseable");
+        let seat_index = 39;
+
+        // when
+        let count = count_occupied_seats_in_sight(&ferry, seat_index);
+
+        // then
+        assert_eq!(count, 8);
+    }
+
+    #[test]
+    fn count_occupied_seats_in_sight_works_for_example_2() {
+        // given
+        let ferry = parse_input(
+            r".............
+.L.L.#.#.#.#.
+.............",
+        )
+        .expect("Expected initial state to be parseable");
+        let seat_index = 14;
+
+        // when
+        let count = count_occupied_seats_in_sight(&ferry, seat_index);
+
+        // then
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn count_occupied_seats_in_sight_works_for_example_3() {
+        // given
+        let ferry = parse_input(
+            r".##.##.
+#.#.#.#
+##...##
+...L...
+##...##
+#.#.#.#
+.##.##.",
+        )
+        .expect("Expected initial state to be parseable");
+        let seat_index = 24;
+
+        // when
+        let count = count_occupied_seats_in_sight(&ferry, seat_index);
+
+        // then
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn seats_at_equilibrium_line_of_sight_works_for_example() {
+        // given
+        let initial = parse_input(
+            r"L.LL.LL.LL
+LLLLLLL.LL
+L.L.L..L..
+LLLL.LL.LL
+L.LL.LL.LL
+L.LLLLL.LL
+..L.L.....
+LLLLLLLLLL
+L.LLLLLL.L
+L.LLLLL.LL",
+        )
+        .expect("Expected initial state to be parseable");
+
+        // when
+        let result = seats_at_equilibrium_line_of_sight(initial);
+
+        // then
+        assert_eq!(result, 26);
     }
 }
