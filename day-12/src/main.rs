@@ -15,7 +15,44 @@ fn main() -> Result<(), String> {
         north.abs() + east.abs()
     );
 
+    let (north_2, east_2) = run_instructions_waypoint(&actions);
+    println!(
+        "Manhattan distance to the origin after waypoint navigation: {}",
+        north_2.abs() + east_2.abs()
+    );
+
     Ok(())
+}
+
+fn run_instructions_waypoint(actions: &[Action]) -> (i64, i64) {
+    let mut ship_north = 0;
+    let mut ship_east = 0;
+    let mut wp_north = 1;
+    let mut wp_east = 10;
+
+    for action in actions {
+        match action {
+            Action::Ver(v) => {
+                wp_north += v;
+            }
+            Action::Hor(v) => {
+                wp_east += v;
+            }
+            Action::Rot(v) => {
+                for _ in 0..v.rem_euclid(4) {
+                    let old_east = wp_east;
+                    wp_east = -wp_north;
+                    wp_north = old_east;
+                }
+            }
+            Action::Forward(v) => {
+                ship_north += v * wp_north;
+                ship_east += v * wp_east;
+            }
+        };
+    }
+
+    (ship_north, ship_east)
 }
 
 fn run_instructions(actions: &[Action]) -> (i64, i64) {
@@ -108,4 +145,18 @@ fn parse_action(input: &str) -> Result<Action, String> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn run_instructions_waypoint_works_for_example() {
+        // given
+        let instructions =
+            parse_actions("F10\nN3\nF7\nR90\nF11").expect("Expected valid example data");
+
+        // when
+        let (north, east) = run_instructions_waypoint(&instructions);
+
+        // then
+        assert_eq!(east, 214);
+        assert_eq!(north, -72);
+    }
 }
