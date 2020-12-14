@@ -17,6 +17,12 @@ fn main() -> Result<(), String> {
         sum_memory
     );
 
+    let sum_memory_v2 = run_instructions_v2(&instructions);
+    println!(
+        "The sum of all values in memory after running all instructions on a v2 decoder is {}",
+        sum_memory_v2
+    );
+
     Ok(())
 }
 
@@ -126,6 +132,86 @@ fn parse_assign(line: &str) -> Result<Assign, String> {
     Ok(Assign { address, value })
 }
 
+#[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Debug, Hash)]
+struct FloatingAddress {
+    floating_bits: u64,
+    bits: u64,
+}
+
+impl FloatingAddress {
+    fn new(floating_bits: u64, bits: u64) -> Self {
+        FloatingAddress {
+            floating_bits,
+            bits,
+        }
+    }
+
+    fn cut(&self, addr2: &FloatingAddress) -> Option<FloatingAddress> {
+        if self.bits & !addr2.floating_bits != addr2.bits & !self.floating_bits {
+            return None;
+        }
+        let floating_bits = self.floating_bits & addr2.floating_bits;
+        let bits = (self.bits | addr2.bits) & !floating_bits;
+
+        Some(FloatingAddress::new(floating_bits, bits))
+    }
+
+    fn cardinality(&self) -> u64 {
+        1 << self.floating_bits.count_ones()
+    }
+}
+
+fn decode_address(raw: u64, mask: &Mask) -> FloatingAddress {
+    FloatingAddress {
+        floating_bits: mask.pos,
+        bits: (raw & !mask.pos) | mask.bits,
+    }
+}
+
+fn decode_instructions_v2(instructions: &[Instruction]) -> Vec<(FloatingAddress, u64)> {
+    let mut result = Vec::with_capacity(instructions.len());
+    let mut current_mask = Mask { pos: 0, bits: 0 };
+    for instruction in instructions {
+        match instruction {
+            Instruction::Mask(mask) => current_mask = *mask,
+            Instruction::Assign(assign) => {
+                result.push((decode_address(assign.address, &current_mask), assign.value));
+            }
+        }
+    }
+    result
+}
+
+fn run_instructions_v2(instructions: &[Instruction]) -> u64 {
+    let mut decoded_instructions = decode_instructions_v2(instructions);
+    decoded_instructions.reverse();
+
+    sum_values(
+        &decoded_instructions,
+        Some(FloatingAddress::new((1 << 36) - 1, 0)),
+        1,
+    ) as u64
+}
+
+fn sum_values(
+    instructions: &[(FloatingAddress, u64)],
+    cut: Option<FloatingAddress>,
+    sign: i64,
+) -> i64 {
+    if cut.is_none() {
+        return 0;
+    }
+    instructions
+        .iter()
+        .enumerate()
+        .map(|(i, (addr, value))| {
+            let next_cut = cut.and_then(|c| c.cut(addr));
+            (next_cut.map(|c| c.cardinality()).unwrap_or(0) * value) as i64 * sign
+                + sum_values(&instructions[i + 1..], next_cut, -sign)
+        })
+        .sum()
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -141,5 +227,73 @@ mod test {
 
         // then
         assert_eq!(result, 73);
+    }
+
+    #[test]
+    fn run_instructions_v2_works_for_example() {
+        // given
+        let instructions = parse_instructions(
+            r"mask = 000000000000000000000000000000X1001X
+mem[42] = 100
+mask = 00000000000000000000000000000000X0XX
+mem[26] = 1",
+        )
+        .expect("Expected example program to be valid");
+
+        // when
+        let result = run_instructions_v2(&instructions);
+
+        // then
+        assert_eq!(result, 208);
+    }
+    #[test]
+    fn run_instructions_v2_works_for_extended_example() {
+        // given
+        let instructions = parse_instructions(
+            r"mask = 000000000000000000000000000000X1001X
+mem[42] = 100
+mask = 00000000000000000000000000000000X0XX
+mem[26] = 1
+mem[26] = 1",
+        )
+        .expect("Expected example program to be valid");
+
+        // when
+        let result = run_instructions_v2(&instructions);
+
+        // then
+        assert_eq!(result, 208);
+    }
+
+    #[test]
+    fn floating_address_cut_creates_cut_set_of_addresses() {
+        assert_eq!(
+            FloatingAddress::new(0, 1).cut(&FloatingAddress::new(0, 0)),
+            None
+        );
+        assert_eq!(
+            FloatingAddress::new(1, 0).cut(&FloatingAddress::new(0, 1)),
+            Some(FloatingAddress::new(0, 1))
+        );
+        assert_eq!(
+            FloatingAddress::new(0b10, 0b01).cut(&FloatingAddress::new(0b01, 0b10)),
+            Some(FloatingAddress::new(0, 0b11))
+        );
+        assert_eq!(
+            FloatingAddress::new(0b100, 0b010).cut(&FloatingAddress::new(0b010, 0b100)),
+            Some(FloatingAddress::new(0, 0b110))
+        );
+        assert_eq!(
+            FloatingAddress::new(0b11, 0b00).cut(&FloatingAddress::new(0b11, 0b00)),
+            Some(FloatingAddress::new(0b11, 0b00))
+        );
+        assert_eq!(
+            FloatingAddress::new(0b110, 0b001).cut(&FloatingAddress::new(0b110, 0b000)),
+            None
+        );
+        assert_eq!(
+            FloatingAddress::new(0b1100, 0b0011).cut(&FloatingAddress::new(0b1010, 0b0101)),
+            Some(FloatingAddress::new(0b1000, 0b0111))
+        );
     }
 }
