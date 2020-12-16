@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -7,10 +8,23 @@ fn main() -> Result<(), String> {
         .nth(1)
         .ok_or_else(|| "No file name given.".to_owned())?;
     let content = read_to_string(&Path::new(&filename)).map_err(|e| e.to_string())?;
-    let (rules, _, nearby_tickets) = parse_input(&content)?;
+    let (rules, own_ticket, nearby_tickets) = parse_input(&content)?;
 
     let error_sum = ticket_scanning_error_sum(&rules, &nearby_tickets);
     println!("The ticket scanning error sum is {}", error_sum);
+
+    let field_order = get_field_order(&rules, &nearby_tickets)?;
+
+    let departure_sum: u64 = own_ticket
+        .iter()
+        .zip(&field_order)
+        .filter(|(_, rule)| rule.field_name.starts_with("departure"))
+        .map(|(value, _)| value)
+        .product();
+    println!(
+        "Product of fields starting with 'departure': {}",
+        departure_sum
+    );
 
     Ok(())
 }
@@ -21,6 +35,112 @@ fn ticket_scanning_error_sum(rules: &[Rule], tickets: &[Vec<u64>]) -> u64 {
         .flatten()
         .filter(|value| !rules.iter().any(|rule| value_matches_rule(rule, **value)))
         .sum()
+}
+
+fn get_field_order<'a>(
+    rules: &'a [Rule],
+    unfiltered_tickets: &'a [Vec<u64>],
+) -> Result<Vec<&'a Rule<'a>>, String> {
+    let tickets: Vec<&[u64]> = unfiltered_tickets
+        .iter()
+        .filter(|ticket| {
+            ticket
+                .iter()
+                .all(|value| rules.iter().any(|rule| value_matches_rule(rule, *value)))
+        })
+        .map(|ticket| ticket as &[u64])
+        .collect();
+
+    if tickets.iter().any(|ticket| ticket.len() != rules.len()) {
+        return Err(
+            "Number of rule does not match number of ticket fields for all tickets".to_owned(),
+        );
+    }
+
+    let matching_rules: Vec<Vec<HashSet<&Rule>>> = tickets
+        .iter()
+        .map(|ticket| matching_rules_for_values(rules, ticket))
+        .collect();
+
+    let mut rule_options: Vec<HashSet<&Rule>> =
+        matching_rules
+            .iter()
+            .skip(1)
+            .fold(matching_rules[0].clone(), |mut acc, ticket_rules| {
+                for i in 0..rules.len() {
+                    acc[i] = acc[i].intersection(&ticket_rules[i]).copied().collect()
+                }
+                acc
+            });
+
+    let mut unique_rules: HashSet<Rule> = HashSet::with_capacity(rules.len());
+    let mut found = true;
+    while found {
+        found = false;
+        rule_options = if let Some(unique_rule) = rule_options
+            .iter()
+            .filter_map(|options| {
+                if options.len() == 1 {
+                    options.iter().next()
+                } else {
+                    None
+                }
+            })
+            .find(|rule| !unique_rules.contains(*rule))
+        {
+            found = true;
+            // ugh don't wanna care about borrowing right now ust clone the stuff
+            unique_rules.insert((*unique_rule).clone());
+            rule_options
+                .iter()
+                .map(|rules| {
+                    if rules.len() == 1 {
+                        rules.clone()
+                    } else {
+                        rules
+                            .iter()
+                            .copied()
+                            .filter(|rule| rule != unique_rule)
+                            .collect()
+                    }
+                })
+                .collect()
+        } else {
+            rule_options
+        }
+    }
+
+    // not sure if this approach works in every case, but it works for my input
+    rule_options
+        .iter()
+        .enumerate()
+        .map(|(i, options)| {
+            if options.len() > 1 {
+                Err(format!("Ambigious field found at index {}", i))
+            } else {
+                options
+                    .iter()
+                    .next()
+                    .copied()
+                    .ok_or_else(|| format!("Found field without any matching rules at index {}", i))
+            }
+        })
+        .collect()
+}
+
+fn matching_rules_for_values<'a>(
+    rules: &'a [Rule<'a>],
+    ticket: &'a [u64],
+) -> Vec<HashSet<&'a Rule<'a>>> {
+    ticket
+        .iter()
+        .map(|value| {
+            rules
+                .iter()
+                .filter(|rule| value_matches_rule(rule, *value))
+                .collect()
+        })
+        .collect()
 }
 
 fn value_matches_rule(rule: &Rule, value: u64) -> bool {
@@ -131,5 +251,32 @@ nearby tickets:
 
         // then
         assert_eq!(sum, 71);
+    }
+
+    #[test]
+    fn get_field_order_works_for_example() {
+        // given
+        let input = r"class: 0-1 or 4-19
+row: 0-5 or 8-19
+seat: 0-13 or 16-19
+
+your ticket:
+11,12,13
+
+nearby tickets:
+3,9,18
+15,1,5
+5,14,9";
+        let (rules, _, nearby_tickets) = parse_input(input).expect("Expected valid example input");
+
+        // when
+        let result = get_field_order(&rules, &nearby_tickets);
+
+        // then
+        let ordered = result.expect("Expected a solution");
+        assert_eq!(ordered.len(), 3, "Unexpected length");
+        assert_eq!(ordered[0].field_name, "row");
+        assert_eq!(ordered[1].field_name, "class");
+        assert_eq!(ordered[2].field_name, "seat");
     }
 }
