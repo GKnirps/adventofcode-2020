@@ -9,12 +9,18 @@ fn main() -> Result<(), String> {
     let content = read_to_string(&Path::new(&filename)).map_err(|e| e.to_string())?;
 
     let tokenized = tokenize_input(&content)?;
-    //let all_results = tokenized.iter().map(|tokens| run_expression(tokens)).collect::<Result<Vec<u64>, String>>()?;
+
     let sum = tokenized
         .iter()
         .map(|tokens| run_expression(tokens))
         .sum::<Result<u64, String>>()?;
     println!("Sum of all expressions is: {}", sum);
+
+    let advanced_sum = tokenized
+        .iter()
+        .map(|tokens| run_expression_advanced(tokens))
+        .sum::<Result<u64, String>>()?;
+    println!("Sum with advanced math is: {}", advanced_sum);
 
     Ok(())
 }
@@ -28,6 +34,78 @@ fn run_expression(tokens: &[Token]) -> Result<u64, String> {
             Token::Mul | Token::Add => {
                 while let Some(op) = op_stack.last().copied() {
                     if op == Token::Mul || op == Token::Add {
+                        op_stack.pop();
+                        output_queue.push(op);
+                    } else {
+                        break;
+                    }
+                }
+                op_stack.push(*token);
+            }
+            Token::ParO => op_stack.push(*token),
+            Token::ParC => {
+                while let Some(op) = op_stack.last() {
+                    if *op == Token::ParO {
+                        break;
+                    }
+                    output_queue.push(*op);
+                    op_stack.pop();
+                }
+                if op_stack.pop() != Some(Token::ParO) {
+                    return Err("Mismatching paranthesis".to_owned());
+                }
+            }
+        }
+    }
+    while let Some(op) = op_stack.pop() {
+        output_queue.push(op);
+    }
+
+    let mut num_stack: Vec<u64> = Vec::with_capacity(output_queue.len());
+    for token in output_queue {
+        match token {
+            Token::Num(n) => num_stack.push(n),
+            Token::Mul => {
+                // the algorithm before should have assured we have a valid expression on the stack
+                let n1 = num_stack.pop().expect("not enough operands on stack");
+                let n2 = num_stack.pop().expect("not enough operands on stack");
+                num_stack.push(n1 * n2);
+            }
+            Token::Add => {
+                // the algorithm before should have assured we have a valid expression on the stack
+                let n1 = num_stack.pop().expect("not enough operands on stack");
+                let n2 = num_stack.pop().expect("not enough operands on stack");
+                num_stack.push(n1 + n2);
+            }
+            _ => return Err(format!("Unknown operator on stack: {:?}", token)),
+        }
+    }
+    num_stack
+        .first()
+        .copied()
+        .ok_or_else(|| "No result after executing expression".to_owned())
+}
+
+fn run_expression_advanced(tokens: &[Token]) -> Result<u64, String> {
+    let mut output_queue: Vec<Token> = Vec::with_capacity(128);
+    let mut op_stack: Vec<Token> = Vec::with_capacity(128);
+    for token in tokens {
+        match token {
+            Token::Num(_) => output_queue.push(*token),
+            Token::Mul => {
+                while let Some(op) = op_stack.last().copied() {
+                    if op == Token::Mul || op == Token::Add {
+                        op_stack.pop();
+                        output_queue.push(op);
+                    } else {
+                        break;
+                    }
+                }
+                op_stack.push(*token);
+            }
+            Token::Add => {
+                while let Some(op) = op_stack.last().copied() {
+                    if op == Token::Add {
                         op_stack.pop();
                         output_queue.push(op);
                     } else {
@@ -135,5 +213,26 @@ mod test {
 
         // then
         assert_eq!(results, &[26, 437, 12240, 13632]);
+    }
+
+    #[test]
+    fn run_expression_advanced_works_for_examples() {
+        // given
+        let examples = r"1 + (2 * 3) + (4 * (5 + 6))
+        2 * 3 + (4 * 5)
+        5 + (8 * 3 + 9 + 3 * 4 * 3)
+        5 * 9 * (7 * 3 * 3 + 9 * 3 + (8 + 6 * 4))
+        ((2 + 4 * 9) * (6 + 9 * 8 + 6) + 6) + 2 + 4 * 2";
+        let tokenized = tokenize_input(examples).expect("Expected successful tokenization");
+
+        // when
+        let results = tokenized
+            .iter()
+            .map(|tokens| run_expression_advanced(tokens))
+            .collect::<Result<Vec<u64>, String>>()
+            .expect("Expected successful parsing");
+
+        // then
+        assert_eq!(results, &[51, 46, 1445, 669060, 23340]);
     }
 }
