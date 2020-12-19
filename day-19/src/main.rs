@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -9,8 +10,111 @@ fn main() -> Result<(), String> {
     let content = read_to_string(&Path::new(&filename)).map_err(|e| e.to_string())?;
 
     let (rules, messages) = parse_input(&content)?;
+    let rules_cnf = rules_to_cnf(&rules);
+    let inverted_rules = inverse_rules(&rules_cnf);
+
+    let valid_messages = messages
+        .iter()
+        .filter(|message| cyk(&inverted_rules, message))
+        .count();
+    println!("You have {} new valid messages.", valid_messages);
 
     Ok(())
+}
+
+// Yes, I know that the problem is regular
+// but the rules are already _almost_ in chomsky normal form and far from being a regular grammar
+// and even with a regular grammar I had to build a deterministic nfm…
+// TL;DR I am to lazy to solve this efficiently
+fn cyk(rules: &HashMap<RuleCnfLhs, Vec<usize>>, word: &str) -> bool {
+    let word_length = word.chars().count();
+    let mut v: Vec<HashSet<usize>> = (0..(word_length * word_length))
+        .map(|_| HashSet::new())
+        .collect();
+    for (i, c) in word.chars().enumerate() {
+        if let Some(rule_ids) = rules.get(&RuleCnfLhs::Lit(c)) {
+            for rule_id in rule_ids {
+                v[i].insert(*rule_id);
+            }
+        }
+    }
+    // this is the second-slowest implementation of the cyk algorithm I've ever seen
+    // and screw wikipedia for its 1-based fucking indexing!
+    for j in 1..word_length {
+        for i in 0..(word_length - j) {
+            for k in 0..j {
+                for rule_id in get_rules_matching(
+                    rules,
+                    &v[i + k * word_length],
+                    &v[i + k + 1 + (j - k - 1) * word_length],
+                ) {
+                    v[j * word_length + i].insert(rule_id);
+                }
+            }
+        }
+    }
+
+    v[word_length * (word_length - 1)].contains(&0)
+}
+
+fn get_rules_matching(
+    rules: &HashMap<RuleCnfLhs, Vec<usize>>,
+    vleft: &HashSet<usize>,
+    vright: &HashSet<usize>,
+) -> Vec<usize> {
+    let mut result: Vec<usize> = Vec::with_capacity(rules.len());
+    for b in vleft {
+        for c in vright {
+            if let Some(rule_ids) = rules.get(&RuleCnfLhs::Sub(*b, *c)) {
+                for rule_id in rule_ids {
+                    result.push(*rule_id);
+                }
+            }
+        }
+    }
+    result
+}
+
+fn rules_to_cnf(in_rules: &[Rule]) -> Vec<Vec<RuleCnfLhs>> {
+    in_rules
+        .iter()
+        .map(|rule| rule_to_cnf(rule, in_rules))
+        .collect()
+}
+
+fn rule_to_cnf(rule: &Rule, in_rules: &[Rule]) -> Vec<RuleCnfLhs> {
+    match rule {
+        Rule::Lit(c) => vec![RuleCnfLhs::Lit(*c)],
+        Rule::Sub(substitutions) => substitutions
+            .iter()
+            .map(|subst| match subst {
+                RuleSubst::Cat(a, b) => vec![RuleCnfLhs::Sub(*a, *b)],
+                RuleSubst::Mono(a) => rule_to_cnf(&in_rules[*a], in_rules),
+            })
+            .flatten()
+            .collect(),
+    }
+}
+
+fn inverse_rules(rules: &[Vec<RuleCnfLhs>]) -> HashMap<RuleCnfLhs, Vec<usize>> {
+    rules.iter().enumerate().fold(
+        HashMap::with_capacity(rules.len() * 2),
+        |mut inverted, (rule_id, rule)| {
+            for lhs in rule {
+                inverted
+                    .entry(*lhs)
+                    .or_insert_with(|| Vec::with_capacity(rules.len()))
+                    .push(rule_id);
+            }
+            inverted
+        },
+    )
+}
+
+#[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Debug, Hash)]
+enum RuleCnfLhs {
+    Lit(char),
+    Sub(usize, usize),
 }
 
 fn parse_input(content: &str) -> Result<(Vec<Rule>, Vec<&str>), String> {
@@ -109,4 +213,33 @@ fn parse_rule(line: &str) -> Result<(usize, Rule), String> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn cyk_works_for_examples() {
+        // given
+        let (rules, words) = parse_input(
+            r#"0: 4 6
+1: 2 3 | 3 2
+2: 4 4 | 5 5
+3: 4 5 | 5 4
+4: "a"
+5: "b"
+6: 1 5
+
+ababbb
+bababa
+abbbab
+aaabbb
+aaaabbb"#,
+        )
+        .expect("Expected example input to parse");
+        let rules_cnf = rules_to_cnf(&rules);
+        let inv_rules = inverse_rules(&rules_cnf);
+
+        // when
+        let results: Vec<bool> = words.iter().map(|word| cyk(&inv_rules, word)).collect();
+
+        // then
+        assert_eq!(&results, &[true, false, true, false, false]);
+    }
 }
