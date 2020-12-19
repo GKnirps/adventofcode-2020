@@ -19,7 +19,45 @@ fn main() -> Result<(), String> {
         .count();
     println!("You have {} new valid messages.", valid_messages);
 
+    let modified_rules = modify_rules(rules)?;
+    let modified_rules_cnf = rules_to_cnf(&modified_rules);
+    let inverted_mod_rules = inverse_rules(&modified_rules_cnf);
+    let valid_messages_with_modified_rules = messages
+        .iter()
+        .filter(|message| cyk(&inverted_mod_rules, message))
+        .count();
+    println!(
+        "You have {} new messages that are valid according to the modified rules",
+        valid_messages_with_modified_rules
+    );
+
     Ok(())
+}
+
+fn modify_rules(mut rules: Vec<Rule>) -> Result<Vec<Rule>, String> {
+    // sanity check first
+    if rules.len() < 12 {
+        return Err(format!(
+            "Unable to modify rule #11, there are only {} rules",
+            rules.len()
+        ));
+    }
+    if rules[8] != Rule::Sub(vec![RuleSubst::Mono(42)])
+        || rules[11] != Rule::Sub(vec![RuleSubst::Cat(42, 31)])
+    {
+        return Err("Rules to modify do not match expectations".to_owned());
+    }
+
+    rules[8] = Rule::Sub(vec![RuleSubst::Mono(42), RuleSubst::Cat(42, 8)]);
+    // our rules_to_cnf function does not handle splitting longer rules, but for this one case
+    // we can handle this here manually
+    rules[11] = Rule::Sub(vec![
+        RuleSubst::Cat(42, 31),
+        RuleSubst::Cat(42, rules.len()),
+    ]);
+    rules.push(Rule::Sub(vec![RuleSubst::Cat(11, 31)]));
+
+    Ok(rules)
 }
 
 // Yes, I know that the problem is regular
