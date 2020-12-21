@@ -17,6 +17,16 @@ fn main() -> Result<(), String> {
         safe_ingredient_occurences
     );
 
+    let ordered_dangerous_ingredients = get_ordered_dangerous_ingredients(&foods)?;
+    let canonical_dangerous_ingredients_list: Vec<&str> = ordered_dangerous_ingredients
+        .iter()
+        .map(|(ing, _)| *ing)
+        .collect();
+    println!(
+        "The canonical dangerous ingredient list is {}",
+        canonical_dangerous_ingredients_list.join(",")
+    );
+
     Ok(())
 }
 
@@ -29,15 +39,7 @@ fn count_ingredient_occurences(ingredients: &HashSet<&str>, foods: &[Food]) -> u
 }
 
 fn find_safe_ingredients<'a>(foods: &[Food<'a>]) -> HashSet<&'a str> {
-    let mut may_contain: HashMap<&str, HashSet<&str>> = HashMap::with_capacity(foods.len() * 2);
-    for food in foods {
-        for allergen in &food.allergens {
-            may_contain
-                .entry(allergen)
-                .and_modify(|ingr| *ingr = ingr.intersection(&food.ingredients).copied().collect())
-                .or_insert_with(|| food.ingredients.clone());
-        }
-    }
+    let may_contain = create_may_contain(foods);
 
     let mut ingredients: HashSet<&str> = foods
         .iter()
@@ -50,6 +52,56 @@ fn find_safe_ingredients<'a>(foods: &[Food<'a>]) -> HashSet<&'a str> {
     }
 
     ingredients
+}
+
+fn get_ordered_dangerous_ingredients<'a>(
+    foods: &[Food<'a>],
+) -> Result<Vec<(&'a str, &'a str)>, String> {
+    let mut may_contain = create_may_contain(foods);
+    let mut contains: HashMap<&'a str, &'a str> = HashMap::with_capacity(may_contain.len());
+
+    let mut found = true;
+    while found {
+        found = false;
+        let mut found_ingredient: Option<&str> = None;
+        for (allergen, ingredients) in may_contain.iter() {
+            if ingredients.len() == 1 {
+                let ingredient = ingredients.iter().next().unwrap();
+                contains.insert(ingredient, allergen);
+                found = true;
+                found_ingredient = Some(ingredient);
+            }
+        }
+        if let Some(ingredient) = found_ingredient {
+            for ings in may_contain.values_mut() {
+                ings.remove(ingredient);
+            }
+        }
+    }
+
+    if contains.len() != may_contain.len() {
+        return Err("Unable to find an ingredient for all allergens".to_owned());
+    }
+
+    let mut result: Vec<(&str, &str)> = contains
+        .iter()
+        .map(|(ingr, allerg)| (*ingr, *allerg))
+        .collect();
+    result.sort_unstable_by_key(|(_, allergen)| *allergen);
+    Ok(result)
+}
+
+fn create_may_contain<'a>(foods: &[Food<'a>]) -> HashMap<&'a str, HashSet<&'a str>> {
+    let mut may_contain: HashMap<&str, HashSet<&str>> = HashMap::with_capacity(foods.len() * 2);
+    for food in foods {
+        for allergen in &food.allergens {
+            may_contain
+                .entry(allergen)
+                .and_modify(|ingr| *ingr = ingr.intersection(&food.ingredients).copied().collect())
+                .or_insert_with(|| food.ingredients.clone());
+        }
+    }
+    may_contain
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -107,5 +159,24 @@ sqjhc mxmxvkd sbzzf (contains fish)";
         assert!(result.contains("trh"));
 
         assert_eq!(safe_ingredient_occurences, 5);
+    }
+
+    #[test]
+    fn get_ordered_dangerous_ingredients_works_for_example() {
+        // given
+        let input = r"mxmxvkd kfcds sqjhc nhms (contains dairy, fish)
+trh fvjkl sbzzf mxmxvkd (contains dairy)
+sqjhc fvjkl (contains soy)
+sqjhc mxmxvkd sbzzf (contains fish)";
+        let foods = parse_input(input).expect("Expected example input to parse");
+
+        // when
+        let result = get_ordered_dangerous_ingredients(&foods).expect("Expected success");
+
+        // then
+        assert_eq!(
+            result,
+            &[("mxmxvkd", "dairy"), ("sqjhc", "fish"), ("fvjkl", "soy")]
+        );
     }
 }
