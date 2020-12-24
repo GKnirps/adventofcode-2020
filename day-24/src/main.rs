@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -11,14 +11,65 @@ fn main() -> Result<(), String> {
     let tile_directions = parse_tiles(&content)?;
 
     let tile_positions = get_tile_positions(&tile_directions);
-    let black_tiles = count_black_tiles(&tile_positions);
-    println!("There are {} black tiles", black_tiles);
+    let black_tiles = get_black_tiles(&tile_positions);
+    println!("There are {} black tiles", black_tiles.len());
+
+    let after_100_days = run_100_days(black_tiles);
+    println!(
+        "After 100 days, there are {} black tiles",
+        after_100_days.len()
+    );
 
     Ok(())
 }
 
-fn count_black_tiles(tiles: &HashMap<(i64, i64), usize>) -> usize {
-    tiles.values().filter(|n| **n % 2 == 1).count()
+fn run_100_days(mut black_tiles: HashSet<(i64, i64)>) -> HashSet<(i64, i64)> {
+    for _ in 0..100 {
+        black_tiles = next_day(&black_tiles);
+    }
+    black_tiles
+}
+
+const NEIGHBOURS: &[(i64, i64)] = &[(1, 0), (-1, 0), (1, -1), (0, -1), (0, 1), (-1, 1)];
+
+fn next_day(black_tiles: &HashSet<(i64, i64)>) -> HashSet<(i64, i64)> {
+    let new_tile_positions: HashSet<(i64, i64)> = black_tiles
+        .iter()
+        .copied()
+        .chain(
+            black_tiles
+                .iter()
+                .flat_map(|(px, py)| NEIGHBOURS.iter().map(move |(nx, ny)| (px + nx, py + ny))),
+        )
+        .collect();
+
+    new_tile_positions
+        .iter()
+        .filter(|(px, py)| {
+            let neighbour_black_tiles = count_neighbour_black_tiles(*px, *py, black_tiles);
+            if black_tiles.contains(&(*px, *py)) {
+                neighbour_black_tiles != 0 && neighbour_black_tiles < 3
+            } else {
+                neighbour_black_tiles == 2
+            }
+        })
+        .copied()
+        .collect()
+}
+
+fn count_neighbour_black_tiles(px: i64, py: i64, black_tiles: &HashSet<(i64, i64)>) -> usize {
+    NEIGHBOURS
+        .iter()
+        .filter(|(dx, dy)| black_tiles.contains(&(px + dx, py + dy)))
+        .count()
+}
+
+fn get_black_tiles(tiles: &HashMap<(i64, i64), usize>) -> HashSet<(i64, i64)> {
+    tiles
+        .iter()
+        .filter(|(_, n)| **n % 2 == 1)
+        .map(|(pos, _)| *pos)
+        .collect()
 }
 
 fn get_tile_positions(tile_dirs: &[Vec<Dir>]) -> HashMap<(i64, i64), usize> {
@@ -122,10 +173,7 @@ fn parse_tile_directions(line: &str) -> Result<Vec<Dir>, String> {
 mod test {
     use super::*;
 
-    #[test]
-    fn get_tile_positions_works_for_example() {
-        // given
-        let input = r"sesenwnenenewseeswwswswwnenewsewsw
+    const INPUT: &str = r"sesenwnenenewseeswwswswwnenewsewsw
 neeenesenwnwwswnenewnwwsewnenwseswesw
 seswneswswsenwwnwse
 nwnwneseeswswnenewneswwnewseswneseene
@@ -145,14 +193,18 @@ nenewswnwewswnenesenwnesewesw
 eneswnwswnwsenenwnwnwwseeswneewsenese
 neswnwewnwnwseenwseesewsenwsweewe
 wseweeenwnesenwwwswnew";
-        let tile_dirs = parse_tiles(input).expect("Expected example input to parse");
+
+    #[test]
+    fn get_tile_positions_works_for_example() {
+        // given
+        let tile_dirs = parse_tiles(INPUT).expect("Expected example input to parse");
 
         // when
         let tile_positions = get_tile_positions(&tile_dirs);
-        let black_tiles = count_black_tiles(&tile_positions);
+        let black_tiles = get_black_tiles(&tile_positions);
 
         // then
-        assert_eq!(black_tiles, 10);
+        assert_eq!(black_tiles.len(), 10);
     }
 
     #[test]
@@ -166,5 +218,19 @@ wseweeenwnesenwwwswnew";
         // then
         assert_eq!(px, 0);
         assert_eq!(py, 0);
+    }
+
+    #[test]
+    fn run_100_days_works_for_example() {
+        // given
+        let tile_dirs = parse_tiles(INPUT).expect("Expected example input to parse");
+        let tile_positions = get_tile_positions(&tile_dirs);
+        let black_tiles = get_black_tiles(&tile_positions);
+
+        // when
+        let after_100 = run_100_days(black_tiles);
+
+        // then
+        assert_eq!(after_100.len(), 2208);
     }
 }
